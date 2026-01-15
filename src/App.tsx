@@ -80,9 +80,9 @@ function StatusBadge({ status }: { status: EventStatus }) {
   const m = STATUS_META[status];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border ${m.pill}`}
+      className={`inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border ${m.pill}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+      <span className={`w-2 h-2 rounded-full ${m.dot}`} />
       {m.label}
     </span>
   );
@@ -547,7 +547,7 @@ export default function FamilyCalendarLite() {
 
   // ---------- MAIN SCREEN ----------
   return (
-    <div className="min-h-screen bg-[#070A12] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#070A12] text-white overflow-x-hidden font-sans">
       {/* Neon blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-fuchsia-500/20 blur-3xl" />
@@ -699,7 +699,7 @@ export default function FamilyCalendarLite() {
                 <button
                   key={opt.id}
                   onClick={() => setFilterWho(opt.id)}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  className={`px-4 py-2 text-sm font-medium rounded-full border transition-colors ${
                     filterWho === opt.id
                       ? `${opt.color} border-current`
                       : 'bg-white/5 border-white/20 text-white/60 hover:bg-white/10 hover:text-white'
@@ -733,8 +733,8 @@ export default function FamilyCalendarLite() {
                     >
                       <div className={`w-1 rounded-full self-stretch ${who?.color.split(' ')[0] || 'bg-white/20'}`} />
                       <div className="flex-1">
-                        <div className="font-semibold text-white text-sm">{ev.title}</div>
-                        <div className="text-xs text-white/60 mt-0.5">
+                        <div className="font-semibold text-white text-lg md:text-xl leading-snug">{ev.title}</div>
+                        <div className="text-sm md:text-base text-white/70 mt-1 leading-snug">
                           {formatDateIT(new Date(ev.start_at))} •{' '}
                           {ev.is_all_day
                             ? 'Tutto il giorno'
@@ -742,7 +742,7 @@ export default function FamilyCalendarLite() {
                         </div>
                         <div className="flex flex-wrap gap-2 mt-1.5">
                           <span
-                            className={`inline-flex text-[10px] px-2 py-0.5 rounded font-medium border ${who?.color || 'bg-white/5 border-white/20 text-white/60'}`}
+                            className={`inline-flex text-xs px-3 py-1 rounded-full font-medium border ${who?.color || 'bg-white/5 border-white/20 text-white/60'}`}
                           >
                             {who?.label || ev.who}
                           </span>
