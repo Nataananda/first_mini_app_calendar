@@ -684,16 +684,17 @@ export default function FamilyCalendarLite() {
                     }`}
                   >
                     <span
-                      className={`text-lg md:text-xl w-10 h-10 flex items-center justify-center rounded-full ${
-                        isToday
-                          ? 'bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white font-bold'
-                          : isSun
-                          ? 'text-rose-400'
-                          : 'text-white/85'
-                      }`}
-                    >
-                      {day.getDate()}
-                    </span>
+  className={`text-base md:text-xl w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full ${
+    isToday
+      ? 'bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white font-bold'
+      : isSun
+      ? 'text-rose-400'
+      : 'text-white/85'
+  }`}
+>
+  {day.getDate()}
+</span>
+
 
                     <div className="flex flex-col gap-1 mt-2">
                       {evs.slice(0, 3).map((e) => {
