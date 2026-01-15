@@ -5,6 +5,47 @@ import { Plus, ChevronLeft, ChevronRight, X, Trash2, Lock, Copy } from 'lucide-r
 // --- CONFIG ---
 const PIN_CODE = '1234';
 
+// --- UI TOKENS (Typography + Touch targets + Spacing) ---
+// Targets:
+// - Headings: 18sp+  -> text-lg+
+// - Body: 16sp       -> text-base
+// - Helper: 14sp     -> text-sm
+// - Chips: px-3 py-1.5, text-[13px]
+// - Touch: min-h 48-52px for buttons/inputs
+// - Cards: p-4, internal gaps gap-3/gap-4
+const UI = {
+  text: {
+    h1: 'text-4xl md:text-5xl font-semibold tracking-tight',
+    h2: 'text-xl md:text-2xl font-semibold',
+    title: 'text-lg md:text-xl font-semibold leading-snug', // 18sp+
+    body: 'text-base leading-snug font-normal', // 16sp
+    helper: 'text-sm leading-snug font-normal', // 14sp
+    subtle: 'text-white/70',
+    strong: 'text-white',
+  },
+  chip: {
+    base:
+      'inline-flex items-center rounded-full border px-3 py-1.5 text-[13px] font-medium leading-none min-h-9',
+  },
+  button: {
+    // 48-52px touch target
+    pill: 'px-5 py-3 text-base font-semibold rounded-full border transition-colors min-h-[52px]',
+    icon: 'h-12 w-12 rounded-full flex items-center justify-center',
+  },
+  input: {
+    base:
+      'w-full bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/40 min-h-[52px] px-4',
+  },
+  card: {
+    base: 'rounded-2xl bg-white/6 backdrop-blur-xl border shadow-xl shadow-black/30',
+    pad: 'p-4', // 16px
+    gap: 'gap-4',
+  },
+  spacing: {
+    cardGap: 'space-y-4',
+  },
+};
+
 type WhoId = 'child' | 'parentA' | 'parentB';
 type EventStatus = 'pending' | 'confirmed' | 'declined';
 
@@ -79,10 +120,8 @@ const getStatus = (e: Partial<CalendarEvent> | null | undefined): EventStatus =>
 function StatusBadge({ status }: { status: EventStatus }) {
   const m = STATUS_META[status];
   return (
-    <span
-      className={`inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border ${m.pill}`}
-    >
-      <span className={`w-2 h-2 rounded-full ${m.dot}`} />
+    <span className={`${UI.chip.base} gap-2 ${m.pill}`}>
+      <span className={`w-2.5 h-2.5 rounded-full ${m.dot}`} />
       {m.label}
     </span>
   );
@@ -104,7 +143,6 @@ const formatTimeIT = (dateStr?: string) => {
 };
 
 function svDate(date: Date) {
-  // stable YYYY-MM-DD
   return date.toLocaleDateString('sv-SE');
 }
 
@@ -149,7 +187,6 @@ export default function FamilyCalendarLite() {
     status: 'confirmed',
   });
 
-  // Restore PIN session (fix: previously only stored expiry, never read it)
   useEffect(() => {
     try {
       if (isPinValidFromStorage()) setIsAuthenticated(true);
@@ -158,14 +195,9 @@ export default function FamilyCalendarLite() {
     }
   }, []);
 
-  // Load events
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('start_at', { ascending: true });
-
+      const { data, error } = await supabase.from('events').select('*').order('start_at', { ascending: true });
       if (error) {
         console.error(error);
         return;
@@ -197,12 +229,11 @@ export default function FamilyCalendarLite() {
     const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     let firstDayOfWeek = new Date(year, month, 1).getDay();
-    if (firstDayOfWeek === 0) firstDayOfWeek = 7; // Sunday -> 7
+    if (firstDayOfWeek === 0) firstDayOfWeek = 7;
 
     const days: Array<Date | null> = [];
     for (let i = 1; i < firstDayOfWeek; i++) days.push(null);
     for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
-    // keep layout 6 rows
     while (days.length < 42) days.push(null);
     return days;
   }, [currentDate]);
@@ -237,8 +268,6 @@ export default function FamilyCalendarLite() {
     if (!formData.start_date) return alert('Seleziona una data');
 
     if (formData.is_all_day) {
-      // NOTE: Using Z can shift date depending on timezone. If your DB stores timestamptz,
-      // consider storing local time consistently. Keeping your previous behavior for now.
       startIso = `${formData.start_date}T00:00:00.000Z`;
       endIso = `${formData.start_date}T23:59:59.000Z`;
     } else {
@@ -353,10 +382,7 @@ export default function FamilyCalendarLite() {
     const newStart = `${targetDateStr}T${timePartStart}`;
     const newEnd = `${targetDateStr}T${timePartEnd}`;
 
-    const { error } = await supabase
-      .from('events')
-      .update({ start_at: newStart, end_at: newEnd })
-      .eq('id', id);
+    const { error } = await supabase.from('events').update({ start_at: newStart, end_at: newEnd }).eq('id', id);
 
     if (error) {
       console.error('Supabase drag error:', error);
@@ -400,20 +426,20 @@ export default function FamilyCalendarLite() {
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#070A12] p-6 text-white">
-        <div className="rounded-2xl bg-white/6 backdrop-blur-xl border border-white/10 shadow-xl shadow-black/30 p-8 w-full max-w-sm text-center">
+        <div className={`${UI.card.base} p-8 w-full max-w-sm text-center border-white/10`}>
           <Lock className="w-12 h-12 text-cyan-400 mx-auto mb-4" />
-          <p className="text-white/60 mb-6">Inserisci PIN (1234)</p>
+          <p className={`${UI.text.helper} ${UI.text.subtle} mb-6`}>Inserisci PIN (1234)</p>
           <input
             type="password"
             inputMode="numeric"
             maxLength={4}
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value)}
-            className="w-full text-center text-3xl bg-white/10 border-2 border-white/20 rounded-xl p-3 mb-6 text-white placeholder:text-white/40"
+            className={`${UI.input.base} text-center text-3xl border-2 border-white/20 mb-6`}
           />
           <button
             onClick={handlePinSubmit}
-            className="w-full bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-fuchsia-500/20 hover:scale-105 active:scale-95 transition"
+            className="w-full min-h-[52px] bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white rounded-xl font-bold shadow-lg shadow-fuchsia-500/20 hover:scale-105 active:scale-95 transition"
           >
             Entra
           </button>
@@ -427,11 +453,11 @@ export default function FamilyCalendarLite() {
     return (
       <div className="h-screen flex flex-col bg-[#070A12] text-white">
         <div className="bg-white/10 backdrop-blur-xl px-4 py-3 flex justify-between border-b border-white/10 sticky top-0">
-          <button onClick={() => setFormMode(null)} className="text-cyan-400 font-semibold">
+          <button onClick={() => setFormMode(null)} className="text-cyan-300 font-semibold min-h-[48px] px-2">
             Annulla
           </button>
-          <span className="font-bold text-white">{editingEventId ? 'Modifica' : 'Nuovo'}</span>
-          <button onClick={handleSaveEvent} className="text-fuchsia-400 font-bold">
+          <span className="font-semibold text-white text-lg">{editingEventId ? 'Modifica' : 'Nuovo'}</span>
+          <button onClick={handleSaveEvent} className="text-fuchsia-300 font-semibold min-h-[48px] px-2">
             Salva
           </button>
         </div>
@@ -441,16 +467,16 @@ export default function FamilyCalendarLite() {
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             placeholder="Titolo"
-            className="w-full text-lg border-b border-white/20 p-2 bg-transparent text-white placeholder:text-white/40"
+            className={`w-full ${UI.text.title} border-b border-white/20 bg-transparent text-white placeholder:text-white/40 min-h-[52px] px-2`}
           />
 
-          <div className="flex gap-2 overflow-x-auto">
+          <div className="flex gap-3 overflow-x-auto">
             {WHO_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setFormData({ ...formData, who: opt.id })}
-                className={`px-4 py-2 text-sm font-medium rounded-full border ${
-                  formData.who === opt.id ? opt.color : 'bg-white/5 border-white/20 text-white/60'
+                className={`min-h-[52px] px-5 py-3 text-base font-semibold rounded-full border transition-colors whitespace-nowrap ${
+                  formData.who === opt.id ? opt.color : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
                 }`}
               >
                 {opt.label}
@@ -458,19 +484,19 @@ export default function FamilyCalendarLite() {
             ))}
           </div>
 
-          <div className="rounded-2xl bg-white/6 backdrop-blur-xl border border-white/10 p-3 space-y-3">
+          <div className="rounded-2xl bg-white/6 backdrop-blur-xl border border-white/10 p-4 space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-white/80">Tutto il giorno</span>
+              <span className={`${UI.text.body} text-white/80`}>Tutto il giorno</span>
               <input
                 type="checkbox"
                 checked={formData.is_all_day}
                 onChange={(e) => setFormData({ ...formData, is_all_day: e.target.checked })}
-                className="accent-cyan-400"
+                className="accent-cyan-400 w-5 h-5"
               />
             </div>
 
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-sm text-white/80">Richiede approvazione</span>
+            <div className="flex items-center justify-between">
+              <span className={`${UI.text.helper} text-white/80`}>Richiede approvazione</span>
               <button
                 type="button"
                 onClick={() =>
@@ -479,12 +505,12 @@ export default function FamilyCalendarLite() {
                     status: prev.status === 'pending' ? 'confirmed' : 'pending',
                   }))
                 }
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
                   formData.status === 'pending' ? 'bg-amber-500' : 'bg-white/20'
                 }`}
               >
                 <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition ${
                     formData.status === 'pending' ? 'translate-x-5' : 'translate-x-1'
                   }`}
                 />
@@ -495,22 +521,22 @@ export default function FamilyCalendarLite() {
               type="date"
               value={formData.start_date}
               onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-              className="w-full bg-white/10 border border-white/20 p-2 rounded text-white"
+              className={`${UI.input.base}`}
             />
 
             {!formData.is_all_day && (
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <input
                   type="time"
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                  className="w-full bg-white/10 border border-white/20 p-2 rounded text-white"
+                  className={`${UI.input.base}`}
                 />
                 <input
                   type="time"
                   value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                  className="w-full bg-white/10 border border-white/20 p-2 rounded text-white"
+                  className={`${UI.input.base}`}
                 />
               </div>
             )}
@@ -520,21 +546,21 @@ export default function FamilyCalendarLite() {
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             placeholder="Note..."
-            className="w-full p-3 rounded-2xl bg-white/6 backdrop-blur-xl border border-white/10 text-white placeholder:text-white/40"
-            rows={3}
+            className="w-full p-4 rounded-2xl bg-white/6 backdrop-blur-xl border border-white/10 text-white placeholder:text-white/40"
+            rows={4}
           />
 
           {editingEventId && (
-            <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="grid grid-cols-2 gap-4 mt-4">
               <button
                 onClick={handleDuplicateEvent}
-                className="flex items-center justify-center gap-2 bg-white/10 text-white py-3 rounded-xl font-semibold hover:bg-white/20 transition"
+                className="flex items-center justify-center gap-2 bg-white/10 text-white min-h-[52px] rounded-xl font-semibold hover:bg-white/20 transition"
               >
                 <Copy size={18} /> Copia
               </button>
               <button
                 onClick={() => handleDeleteEvent(editingEventId)}
-                className="flex items-center justify-center gap-2 bg-red-500/20 text-red-300 py-3 rounded-xl font-semibold hover:bg-red-500/30 transition"
+                className="flex items-center justify-center gap-2 bg-red-500/20 text-red-300 min-h-[52px] rounded-xl font-semibold hover:bg-red-500/30 transition"
               >
                 <Trash2 size={18} /> Elimina
               </button>
@@ -560,43 +586,48 @@ export default function FamilyCalendarLite() {
         <div className="pt-6 px-4 pb-4 space-y-4 bg-gradient-to-b from-[#070A12]/80 to-transparent backdrop-blur-xl z-10 border-b border-white/5">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl md:text-4xl font-semibold tracking-tight bg-gradient-to-r from-cyan-300 via-white to-fuchsia-300 bg-clip-text text-transparent drop-shadow-sm">Calendario</h1>
-</div>
+              <h1
+                className={`${UI.text.h1} bg-gradient-to-r from-cyan-300 via-white to-fuchsia-300 bg-clip-text text-transparent drop-shadow-sm`}
+              >
+                Calendario
+              </h1>
+            </div>
             <button
               onClick={() => openForm()}
-              className="h-12 w-12 rounded-full bg-gradient-to-br from-cyan-400 to-fuchsia-500 shadow-lg shadow-fuchsia-500/20 ring-1 ring-white/10 hover:scale-105 active:scale-95 transition flex items-center justify-center"
+              className={`${UI.button.icon} bg-gradient-to-br from-cyan-400 to-fuchsia-500 shadow-lg shadow-fuchsia-500/20 ring-1 ring-white/10 hover:scale-105 active:scale-95 transition`}
             >
               <Plus size={20} />
             </button>
           </div>
 
-          <div className="flex bg-white/5 backdrop-blur-md p-1 rounded-xl border border-white/10">
+          {/* Tabs - 52px touch target */}
+          <div className="flex bg-white/5 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
             <button
               onClick={() => setView('month')}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+              className={`flex-1 py-3 text-xl md:text-2xl font-semibold rounded-xl transition-all min-h-[52px] whitespace-nowrap ${
                 view === 'month'
-                  ? 'bg-gradient-to-br from-cyan-400/20 to-fuchsia-500/20 text-white shadow-lg'
-                  : 'text-white/60 hover:text-white'
+                  ? 'bg-gradient-to-br from-cyan-400/25 to-fuchsia-500/25 text-white shadow-lg ring-1 ring-white/10'
+                  : 'text-white/80 hover:text-white'
               }`}
             >
               Mese
             </button>
             <button
               onClick={() => setView('agenda')}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+              className={`flex-1 py-3 text-xl md:text-2xl font-semibold rounded-xl transition-all min-h-[52px] whitespace-nowrap ${
                 view === 'agenda'
-                  ? 'bg-gradient-to-br from-cyan-400/20 to-fuchsia-500/20 text-white shadow-lg'
-                  : 'text-white/60 hover:text-white'
+                  ? 'bg-gradient-to-br from-cyan-400/25 to-fuchsia-500/25 text-white shadow-lg ring-1 ring-white/10'
+                  : 'text-white/80 hover:text-white'
               }`}
             >
               Lista
             </button>
             <button
               onClick={() => setView('pending')}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+              className={`flex-1 py-3 text-xl md:text-2xl font-semibold rounded-xl transition-all min-h-[52px] whitespace-nowrap ${
                 view === 'pending'
-                  ? 'bg-gradient-to-br from-cyan-400/20 to-fuchsia-500/20 text-white shadow-lg'
-                  : 'text-white/60 hover:text-white'
+                  ? 'bg-gradient-to-br from-cyan-400/25 to-fuchsia-500/25 text-white shadow-lg ring-1 ring-white/10'
+                  : 'text-white/80 hover:text-white'
               }`}
             >
               In attesa
@@ -607,25 +638,31 @@ export default function FamilyCalendarLite() {
         {/* MONTH */}
         {view === 'month' && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center px-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 mx-4 mt-4">
-              <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-white/10 rounded-full transition">
+            <div className="flex justify-between items-center px-4 py-3 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 mx-4 mt-4 min-h-[56px]">
+              <button
+                onClick={() => handleMonthChange(-1)}
+                className="h-12 w-12 flex items-center justify-center hover:bg-white/10 rounded-full transition"
+              >
                 <ChevronLeft />
               </button>
-              <span className="font-semibold capitalize">
+              <span className="text-xl md:text-2xl font-semibold capitalize">
                 {MONTHS_IT[currentDate.getMonth()]} {currentDate.getFullYear()}
               </span>
-              <button onClick={() => handleMonthChange(1)} className="p-2 hover:bg-white/10 rounded-full transition">
+              <button
+                onClick={() => handleMonthChange(1)}
+                className="h-12 w-12 flex items-center justify-center hover:bg-white/10 rounded-full transition"
+              >
                 <ChevronRight />
               </button>
             </div>
 
-            <div className="grid grid-cols-7 text-center text-sm font-medium text-white/50 py-3 px-4">
+            <div className="grid grid-cols-7 text-center text-base md:text-lg font-medium text-white/55 py-3 px-4">
               {DAYS_IT.map((d) => (
                 <div key={d}>{d}</div>
               ))}
             </div>
 
-            <div className="flex-1 grid grid-cols-7 grid-rows-6 gap-1 px-4 pb-4">
+            <div className="flex-1 grid grid-cols-7 grid-rows-6 gap-2 px-4 pb-4">
               {calendarDays.map((day, i) => {
                 if (!day) return <div key={i} className="rounded-lg bg-white/5" />;
 
@@ -642,23 +679,23 @@ export default function FamilyCalendarLite() {
                       setSelectedDate(day);
                       setShowDayDrawer(true);
                     }}
-                    className={`border border-white/10 p-1 relative transition-colors hover:bg-white/5 active:bg-white/10 rounded-lg cursor-pointer ${
+                    className={`border border-white/10 p-3 min-h-[64px] relative transition-colors hover:bg-white/5 active:bg-white/10 rounded-xl cursor-pointer ${
                       isToday ? 'bg-gradient-to-br from-cyan-500/10 to-fuchsia-500/10' : ''
                     }`}
                   >
                     <span
-                      className={`text-sm md:text-base w-8 h-8 flex items-center justify-center rounded-full ${
+                      className={`text-lg md:text-xl w-10 h-10 flex items-center justify-center rounded-full ${
                         isToday
                           ? 'bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white font-bold'
                           : isSun
                           ? 'text-rose-400'
-                          : 'text-white/80'
+                          : 'text-white/85'
                       }`}
                     >
                       {day.getDate()}
                     </span>
 
-                    <div className="flex flex-col gap-0.5 mt-1">
+                    <div className="flex flex-col gap-1 mt-2">
                       {evs.slice(0, 3).map((e) => {
                         const whoColor = WHO_OPTIONS.find((o) => o.id === e.who)?.color.split(' ')[0];
                         return (
@@ -671,7 +708,7 @@ export default function FamilyCalendarLite() {
                         );
                       })}
                       {evs.length > 3 && (
-                        <span className="text-[9px] text-white/40 pl-0.5 leading-none">+{evs.length - 3}</span>
+                        <span className="text-[13px] text-white/55 pl-0.5 leading-none">+{evs.length - 3}</span>
                       )}
                     </div>
                   </div>
@@ -684,13 +721,13 @@ export default function FamilyCalendarLite() {
         {/* AGENDA */}
         {(view === 'agenda' || view === 'pending') && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-4 py-3 flex gap-2 overflow-x-auto">
+            <div className="px-4 py-3 flex gap-3 overflow-x-auto">
               <button
                 onClick={() => setFilterWho('all')}
-                className={`px-4 py-2 text-sm font-medium rounded-full border transition-colors ${
+                className={`${UI.button.pill} ${
                   filterWho === 'all'
-                    ? 'bg-gradient-to-br from-cyan-400/20 to-fuchsia-500/20 text-white border-white/30'
-                    : 'bg-white/5 border-white/20 text-white/60 hover:bg-white/10 hover:text-white'
+                    ? 'bg-gradient-to-br from-cyan-400/25 to-fuchsia-500/25 text-white border-white/30 ring-1 ring-white/10 shadow-lg'
+                    : 'bg-white/5 border-white/20 text-white/80 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 Tutti
@@ -699,10 +736,10 @@ export default function FamilyCalendarLite() {
                 <button
                   key={opt.id}
                   onClick={() => setFilterWho(opt.id)}
-                  className={`px-4 py-2 text-sm font-medium rounded-full border transition-colors ${
+                  className={`${UI.button.pill} ${
                     filterWho === opt.id
-                      ? `${opt.color} border-current`
-                      : 'bg-white/5 border-white/20 text-white/60 hover:bg-white/10 hover:text-white'
+                      ? `${opt.color} border-current ring-1 ring-white/10 shadow-lg`
+                      : 'bg-white/5 border-white/20 text-white/75 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   {opt.label}
@@ -710,13 +747,13 @@ export default function FamilyCalendarLite() {
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className={`flex-1 overflow-y-auto p-4 ${UI.spacing.cardGap}`}>
               {filteredEventsList.length === 0 ? (
                 <div className="text-center mt-10">
-                  <p className="text-white/60">
+                  <p className={`${UI.text.body} ${UI.text.subtle}`}>
                     {view === 'pending' ? 'Nessuna richiesta in attesa' : 'Nessun evento'}
                   </p>
-                  {view === 'pending' && <p className="text-xs text-white/40 mt-2">Le richieste appariranno qui</p>}
+                  {view === 'pending' && <p className={`${UI.text.helper} text-white/45 mt-2`}>Le richieste appariranno qui</p>}
                 </div>
               ) : (
                 filteredEventsList.map((ev) => {
@@ -727,23 +764,19 @@ export default function FamilyCalendarLite() {
                     <div
                       key={ev.id}
                       onClick={() => openForm(ev)}
-                      className={`rounded-2xl bg-white/6 backdrop-blur-xl border shadow-xl shadow-black/30 p-4 flex gap-3 active:scale-[0.99] transition-transform cursor-pointer ${
+                      className={`${UI.card.base} ${UI.card.pad} flex ${UI.card.gap} active:scale-[0.99] transition-transform cursor-pointer ${
                         view === 'pending' ? 'border-yellow-400/30' : 'border-white/10'
                       }`}
                     >
                       <div className={`w-1 rounded-full self-stretch ${who?.color.split(' ')[0] || 'bg-white/20'}`} />
                       <div className="flex-1">
-                        <div className="font-semibold text-white text-lg md:text-xl leading-snug">{ev.title}</div>
-                        <div className="text-sm md:text-base text-white/70 mt-1 leading-snug">
+                        <div className={`${UI.text.title} ${UI.text.strong}`}>{ev.title}</div>
+                        <div className={`${UI.text.body} ${UI.text.subtle} mt-1`}>
                           {formatDateIT(new Date(ev.start_at))} •{' '}
-                          {ev.is_all_day
-                            ? 'Tutto il giorno'
-                            : `${formatTimeIT(ev.start_at)} - ${formatTimeIT(ev.end_at)}`}
+                          {ev.is_all_day ? 'Tutto il giorno' : `${formatTimeIT(ev.start_at)} - ${formatTimeIT(ev.end_at)}`}
                         </div>
-                        <div className="flex flex-wrap gap-2 mt-1.5">
-                          <span
-                            className={`inline-flex text-xs px-3 py-1 rounded-full font-medium border ${who?.color || 'bg-white/5 border-white/20 text-white/60'}`}
-                          >
+                        <div className="flex flex-wrap gap-3 mt-3">
+                          <span className={`${UI.chip.base} ${who?.color || 'bg-white/5 border-white/20 text-white/75'}`}>
                             {who?.label || ev.who}
                           </span>
                           <StatusBadge status={status} />
@@ -768,18 +801,18 @@ export default function FamilyCalendarLite() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-4">
-                <h2 className="font-bold text-lg capitalize text-white">{formatDateIT(selectedDate)}</h2>
+                <h2 className={`${UI.text.h2} capitalize text-white`}>{formatDateIT(selectedDate)}</h2>
                 <button
                   onClick={() => setShowDayDrawer(false)}
-                  className="p-1 bg-white/10 hover:bg-white/20 rounded-full transition"
+                  className="h-12 w-12 bg-white/10 hover:bg-white/20 rounded-full transition flex items-center justify-center"
                 >
                   <X size={20} className="text-white" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-2">
+              <div className="flex-1 overflow-y-auto space-y-3">
                 {eventsForDate(selectedDate, 'drawer').length === 0 ? (
-                  <p className="text-white/40 text-center text-sm py-4">Nessun evento</p>
+                  <p className={`${UI.text.body} text-white/60 text-center py-6`}>Nessun evento</p>
                 ) : (
                   eventsForDate(selectedDate, 'drawer').map((e) => {
                     const who = WHO_OPTIONS.find((o) => o.id === e.who);
@@ -787,7 +820,7 @@ export default function FamilyCalendarLite() {
                       <div
                         key={e.id}
                         onClick={() => openForm(e)}
-                        className="p-3 rounded-xl bg-white/10 border-l-4 text-left cursor-pointer hover:bg-white/15 transition"
+                        className="p-4 rounded-2xl bg-white/10 border-l-4 text-left cursor-pointer hover:bg-white/15 transition"
                         style={{
                           borderLeftColor: who?.color.includes('blue')
                             ? '#3b82f6'
@@ -796,8 +829,8 @@ export default function FamilyCalendarLite() {
                             : '#a855f7',
                         }}
                       >
-                        <div className="font-semibold text-sm text-white">{e.title}</div>
-                        <div className="text-xs text-white/60 mt-1">
+                        <div className={`${UI.text.title} text-white`}>{e.title}</div>
+                        <div className={`${UI.text.body} text-white/70 mt-2`}>
                           {e.is_all_day ? 'Tutto il giorno' : `${formatTimeIT(e.start_at)} - ${formatTimeIT(e.end_at)}`}
                         </div>
                       </div>
@@ -811,7 +844,7 @@ export default function FamilyCalendarLite() {
                   setShowDayDrawer(false);
                   openForm(null, selectedDate);
                 }}
-                className="mt-4 w-full bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white py-3 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg shadow-fuchsia-500/20 hover:scale-105 active:scale-95 transition"
+                className="mt-4 w-full min-h-[52px] bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg shadow-fuchsia-500/20 hover:scale-105 active:scale-95 transition"
               >
                 <Plus size={18} /> Aggiungi
               </button>
