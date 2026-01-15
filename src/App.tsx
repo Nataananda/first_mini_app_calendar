@@ -1,3 +1,5 @@
+import { supabase } from './supabaseClient';
+
 import { useState, useEffect } from 'react';
 import {
   Plus,
@@ -73,17 +75,37 @@ const formatTimeRU = (dateStr?: string) => {
 
 // --- ОСНОВНОЙ КОМПОНЕНТ ---
 export default function FamilyCalendarLite() {
-  // *** АВТО-ИСПРАВЛЕНИЕ СТИЛЕЙ ***
-
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
 
   const [view, setView] = useState('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('start_at', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      setEvents((data ?? []) as any);
+    })();
+  }, []);
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDayDrawer, setShowDayDrawer] = useState(false);
+
+  // ...дальше твой код
+
+
+
+
 
   const [formMode, setFormMode] = useState<null | 'open'>(null);
   const [formData, setFormData] = useState<{
@@ -107,20 +129,11 @@ export default function FamilyCalendarLite() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [filterWho, setFilterWho] = useState('all');
 
-  // Загрузка
-  useEffect(() => {
-    const expiry = localStorage.getItem('pin_expiry');
-    if (expiry && new Date().getTime() < parseInt(expiry))
-      setIsAuthenticated(true);
-    const savedEvents = localStorage.getItem('my_calendar_events');
-    if (savedEvents) setEvents(JSON.parse(savedEvents));
-  }, []);
-
   // Сохранение
-  useEffect(() => {
-    if (events.length > 0)
-      localStorage.setItem('my_calendar_events', JSON.stringify(events));
-  }, [events]);
+ // useEffect(() => {
+// if (events.length > 0)
+// localStorage.setItem('my_calendar_events', JSON.stringify(events));
+ // }, [events]);
 
   const handlePinSubmit = () => {
     if (pinInput === PIN_CODE) {
@@ -156,7 +169,7 @@ export default function FamilyCalendarLite() {
 
   const eventsForDate = (date: Date | null) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = date.toLocaleDateString('sv-SE'); // YYYY-MM-DD
     return events.filter((e) => e.start_at.startsWith(dateStr));
   };
 
@@ -168,118 +181,181 @@ export default function FamilyCalendarLite() {
     return sorted;
   };
 
-  // События
-  const handleSaveEvent = () => {
-    if (!formData.title.trim()) return alert('Введите название');
+ // События
+const handleSaveEvent = async () => {
+  if (!formData.title.trim()) return alert('Введите название');
 
-    let startIso, endIso;
-    if (formData.is_all_day) {
-      startIso = `${formData.start_date}T00:00:00.000Z`;
-      endIso = `${formData.start_date}T23:59:59.000Z`;
-    } else {
-      if (formData.end_time <= formData.start_time)
-        return alert('Конец должен быть позже начала');
-      startIso = `${formData.start_date}T${formData.start_time}:00`;
-      endIso = `${formData.start_date}T${formData.end_time}:00`;
-    }
+  let startIso, endIso;
 
-    const newEvent: CalendarEvent = {
-      id: editingEventId || crypto.randomUUID(),
-      title: formData.title,
-      who: formData.who,
-      notes: formData.notes,
-      start_at: startIso,
-      end_at: endIso,
-      is_all_day: formData.is_all_day,
-    };
+  if (formData.is_all_day) {
+    startIso = `${formData.start_date}T00:00:00.000Z`;
+    endIso = `${formData.start_date}T23:59:59.000Z`;
+  } else {
+    if (formData.end_time <= formData.start_time)
+      return alert('Конец должен быть позже начала');
 
-    if (editingEventId) {
-      setEvents(events.map((e) => (e.id === editingEventId ? newEvent : e)));
-    } else {
-      setEvents([...events, newEvent]);
-    }
+    startIso = `${formData.start_date}T${formData.start_time}:00`;
+    endIso = `${formData.start_date}T${formData.end_time}:00`;
+  }
 
-    setFormMode(null);
-    setEditingEventId(null);
-    setShowDayDrawer(false);
+  const newEvent: CalendarEvent = {
+    id: editingEventId || crypto.randomUUID(),
+    title: formData.title,
+    who: formData.who,
+    notes: formData.notes,
+    start_at: startIso,
+    end_at: endIso,
+    is_all_day: formData.is_all_day,
   };
 
-  const handleDeleteEvent = (id: string) => {
-    if (confirm('Удалить?')) {
-      setEvents(events.filter((e) => e.id !== id));
-      setFormMode(null);
-      setEditingEventId(null);
-      setShowDayDrawer(false);
-    }
-  };
+  let error;
+  
+  if (editingEventId) {
+    const { error: updateError } = await supabase
+      .from('events')
+      .update({
+        title: newEvent.title,
+        who: newEvent.who,
+        notes: newEvent.notes,
+        start_at: newEvent.start_at,
+        end_at: newEvent.end_at,
+        is_all_day: newEvent.is_all_day,
+      })
+      .eq('id', editingEventId);
+    error = updateError;
+  } else {
+    const { error: insertError } = await supabase
+      .from('events')
+      .insert([newEvent]);
+    error = insertError;
+  }
 
-  const handleDuplicateEvent = () => {
-    const original = events.find((e) => e.id === editingEventId);
-    if (!original) return;
+  if (error) {
+    console.error('Supabase error:', error);
+    alert('Не получилось сохранить в базу');
+    return;
+  }
 
-    const newEvent: CalendarEvent = {
-      ...original,
-      id: crypto.randomUUID(),
-      title: original.title + ' (Копия)',
-    };
-
+  if (editingEventId) {
+    setEvents(events.map((e) => (e.id === editingEventId ? newEvent : e)));
+  } else {
     setEvents([...events, newEvent]);
-    setFormMode(null);
+  }
+
+  setFormMode(null);
+  setEditingEventId(null);
+  setShowDayDrawer(false);
+};
+
+const handleDeleteEvent = async (id: string) => {
+  if (!confirm('Удалить?')) return;
+
+  const { error } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Supabase delete error:', error);
+    alert('Не получилось удалить');
+    return;
+  }
+
+  setEvents(events.filter((e) => e.id !== id));
+  setFormMode(null);
+  setEditingEventId(null);
+  setShowDayDrawer(false);
+};
+
+const handleDuplicateEvent = async () => {
+  const original = events.find((e) => e.id === editingEventId);
+  if (!original) return;
+
+  const newEvent: CalendarEvent = {
+    ...original,
+    id: crypto.randomUUID(),
+    title: original.title + ' (Копия)',
+  };
+
+  const { error } = await supabase
+    .from('events')
+    .insert([newEvent]);
+
+  if (error) {
+    console.error('Supabase duplicate error:', error);
+    alert('Не получилось скопировать');
+    return;
+  }
+
+  setEvents([...events, newEvent]);
+  setFormMode(null);
+  setEditingEventId(null);
+  alert('Скопировано!');
+};
+
+const handleDragStart = (e: React.DragEvent, id: string) =>
+  e.dataTransfer.setData('id', id);
+
+const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+
+const handleDrop = async (e: React.DragEvent, targetDate: Date) => {
+  const id = e.dataTransfer.getData('id');
+  const ev = events.find((e) => e.id === id);
+  if (!ev) return;
+
+  const targetDateStr = targetDate.toLocaleDateString('sv-SE');
+  const timePartStart = ev.start_at.split('T')[1];
+  const timePartEnd = ev.end_at.split('T')[1];
+  const newStart = `${targetDateStr}T${timePartStart}`;
+  const newEnd = `${targetDateStr}T${timePartEnd}`;
+
+  const { error } = await supabase
+    .from('events')
+    .update({ start_at: newStart, end_at: newEnd })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Supabase drag error:', error);
+    alert('Не получилось переместить');
+    return;
+  }
+
+  setEvents(
+    events.map((e) =>
+      e.id === id ? { ...e, start_at: newStart, end_at: newEnd } : e
+    )
+  );
+};
+
+const openForm = (
+  event: CalendarEvent | null = null,
+  date: Date = new Date()
+) => {
+  if (event) {
+    setEditingEventId(event.id);
+    setFormData({
+      title: event.title,
+      who: event.who,
+      notes: event.notes,
+      start_date: event.start_at.split('T')[0],
+      start_time: event.start_at.split('T')[1]?.slice(0, 5) || '12:00',
+      end_time: event.end_at.split('T')[1]?.slice(0, 5) || '13:00',
+      is_all_day: event.is_all_day,
+    });
+  } else {
     setEditingEventId(null);
-    alert('Скопировано!');
-  };
-
-  const handleDragStart = (e: React.DragEvent, id: string) =>
-    e.dataTransfer.setData('id', id);
-  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
-  const handleDrop = (e: React.DragEvent, targetDate: Date) => {
-    const id = e.dataTransfer.getData('id');
-    const ev = events.find((e) => e.id === id);
-    if (!ev) return;
-
-    const targetDateStr = targetDate.toISOString().split('T')[0];
-    const timePartStart = ev.start_at.split('T')[1];
-    const timePartEnd = ev.end_at.split('T')[1];
-    const newStart = `${targetDateStr}T${timePartStart}`;
-    const newEnd = `${targetDateStr}T${timePartEnd}`;
-
-    setEvents(
-      events.map((e) =>
-        e.id === id ? { ...e, start_at: newStart, end_at: newEnd } : e
-      )
-    );
-  };
-
-  const openForm = (
-    event: CalendarEvent | null = null,
-    date: Date = new Date()
-  ) => {
-    if (event) {
-      setEditingEventId(event.id);
-      setFormData({
-        title: event.title,
-        who: event.who,
-        notes: event.notes,
-        start_date: event.start_at.split('T')[0],
-        start_time: event.start_at.split('T')[1]?.slice(0, 5) || '12:00',
-        end_time: event.end_at.split('T')[1]?.slice(0, 5) || '13:00',
-        is_all_day: event.is_all_day,
-      });
-    } else {
-      setEditingEventId(null);
-      setFormData({
-        title: '',
-        who: 'child',
-        notes: '',
-        start_date: date.toISOString().split('T')[0],
-        start_time: '12:00',
-        end_time: '13:00',
-        is_all_day: false,
-      });
-    }
-    setFormMode('open');
-  };
-
+    setFormData({
+      title: '',
+      who: 'child',
+      notes: '',
+      start_date: date.toISOString().split('T')[0],
+      start_time: '12:00',
+      end_time: '13:00',
+      is_all_day: false,
+    });
+  }
+  setFormMode('open');
+};
   // --- UI ---
   if (!isAuthenticated)
     return (
