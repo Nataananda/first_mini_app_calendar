@@ -117,6 +117,16 @@ const STATUS_META: Record<EventStatus, { label: string; pill: string; dot: strin
 const getStatus = (e: Partial<CalendarEvent> | null | undefined): EventStatus =>
   ((e?.status as EventStatus) ?? 'confirmed');
 
+// ✅ UI helper: кому подтверждать (pending)
+const whoLabel = (id: WhoId | null | undefined) => WHO_OPTIONS.find((o) => o.id === id)?.label ?? '';
+
+const approvalHint = (e: CalendarEvent) => {
+  if (getStatus(e) !== 'pending') return null;
+  const target = e.needs_approval_from as WhoId | null | undefined;
+  const name = whoLabel(target);
+  return name ? `Richiede approvazione da ${name}` : 'Richiede approvazione';
+};
+
 function StatusBadge({ status }: { status: EventStatus }) {
   const m = STATUS_META[status];
   return (
@@ -167,6 +177,18 @@ export default function FamilyCalendarLite() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [filterWho, setFilterWho] = useState<'all' | WhoId>('all');
 
+  // ✅ ВАЖНО: эти константы должны быть ВЫШЕ formData, потому что используются в initial state.
+  type ParentId = 'parentA' | 'parentB';
+
+  // ✅ ВРЕМЕННЫЙ дефолт: кто сейчас работает в Mini App.
+  // Потом заменим на Telegram user id или твою систему PIN/ролей.
+  const CURRENT_PARENT: ParentId = 'parentA';
+
+  const OTHER_PARENT: Record<ParentId, ParentId> = {
+    parentA: 'parentB',
+    parentB: 'parentA',
+  };
+
   const [formData, setFormData] = useState<{
     title: string;
     who: WhoId;
@@ -176,6 +198,9 @@ export default function FamilyCalendarLite() {
     is_all_day: boolean;
     notes: string;
     status: EventStatus;
+
+    requested_by: ParentId | null;
+    needs_approval_from: ParentId | null;
   }>({
     title: '',
     who: 'child',
@@ -185,6 +210,9 @@ export default function FamilyCalendarLite() {
     is_all_day: false,
     notes: '',
     status: 'confirmed',
+
+    requested_by: CURRENT_PARENT,
+    needs_approval_from: null,
   });
 
   useEffect(() => {
@@ -259,6 +287,18 @@ export default function FamilyCalendarLite() {
     return sorted;
   }, [events, view, filterWho]);
 
+  // ✅ Day Drawer: pending sopra, poi confirmed (ordinato per orario)
+  const drawerEvents = useMemo(() => {
+    return eventsForDate(selectedDate, 'drawer')
+      .slice()
+      .sort((a, b) => {
+        const pa = getStatus(a) === 'pending' ? 0 : 1;
+        const pb = getStatus(b) === 'pending' ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return new Date(a.start_at).getTime() - new Date(b.start_at).getTime();
+      });
+  }, [events, selectedDate]);
+
   const handleSaveEvent = async () => {
     if (!formData.title.trim()) return alert('Inserisci un titolo');
 
@@ -287,6 +327,12 @@ export default function FamilyCalendarLite() {
       end_at: endIso,
       is_all_day: formData.is_all_day,
       status: formData.status,
+
+      requested_by: formData.requested_by ?? CURRENT_PARENT,
+      needs_approval_from:
+        formData.status === 'pending'
+          ? (formData.needs_approval_from ?? OTHER_PARENT[CURRENT_PARENT])
+          : null,
     };
 
     const { error } = editingEventId
@@ -300,6 +346,9 @@ export default function FamilyCalendarLite() {
             end_at: newEvent.end_at,
             is_all_day: newEvent.is_all_day,
             status: newEvent.status,
+
+            requested_by: newEvent.requested_by,
+            needs_approval_from: newEvent.needs_approval_from,
           })
           .eq('id', editingEventId)
       : await supabase.from('events').insert([newEvent]);
@@ -405,6 +454,9 @@ export default function FamilyCalendarLite() {
         end_time: event.end_at.split('T')[1]?.slice(0, 5) || '13:00',
         is_all_day: event.is_all_day,
         status: getStatus(event),
+
+        requested_by: (event.requested_by as ParentId) ?? CURRENT_PARENT,
+        needs_approval_from: (event.needs_approval_from as ParentId) ?? null,
       });
     } else {
       setEditingEventId(null);
@@ -417,6 +469,9 @@ export default function FamilyCalendarLite() {
         end_time: '13:00',
         is_all_day: false,
         status: 'confirmed',
+
+        requested_by: CURRENT_PARENT,
+        needs_approval_from: null,
       });
     }
     setFormMode('open');
@@ -500,10 +555,15 @@ export default function FamilyCalendarLite() {
               <button
                 type="button"
                 onClick={() =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    status: prev.status === 'pending' ? 'confirmed' : 'pending',
-                  }))
+                  setFormData((prev) => {
+                    const wantsApproval = prev.status !== 'pending';
+                    return {
+                      ...prev,
+                      status: wantsApproval ? 'pending' : 'confirmed',
+                      requested_by: CURRENT_PARENT,
+                      needs_approval_from: wantsApproval ? OTHER_PARENT[CURRENT_PARENT] : null,
+                    };
+                  })
                 }
                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
                   formData.status === 'pending' ? 'bg-amber-500' : 'bg-white/20'
@@ -666,7 +726,14 @@ export default function FamilyCalendarLite() {
               {calendarDays.map((day, i) => {
                 if (!day) return <div key={i} className="rounded-lg bg-white/5" />;
 
-                const evs = eventsForDate(day, 'month');
+                const evs = eventsForDate(day, 'month'); // confirmed only
+
+                // ✅ pending count (for tiny yellow dot)
+                const dateStr = svDate(day);
+                const pendingCount = events.filter(
+                  (e) => (e.start_at || '').startsWith(dateStr) && getStatus(e) === 'pending'
+                ).length;
+
                 const isToday = day.toDateString() === new Date().toDateString();
                 const isSun = day.getDay() === 0;
 
@@ -684,17 +751,24 @@ export default function FamilyCalendarLite() {
                     }`}
                   >
                     <span
-  className={`text-base md:text-xl w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full ${
-    isToday
-      ? 'bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white font-bold'
-      : isSun
-      ? 'text-rose-400'
-      : 'text-white/85'
-  }`}
->
-  {day.getDate()}
-</span>
+                      className={`text-base md:text-xl w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full ${
+                        isToday
+                          ? 'bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-white font-bold'
+                          : isSun
+                          ? 'text-rose-400'
+                          : 'text-white/85'
+                      }`}
+                    >
+                      {day.getDate()}
+                    </span>
 
+                    {/* ✅ Tiny pending dot (does NOT add stripes) */}
+                    {pendingCount > 0 && (
+                      <span
+                        className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-yellow-400"
+                        title={`${pendingCount} in attesa`}
+                      />
+                    )}
 
                     <div className="flex flex-col gap-1 mt-2">
                       {evs.slice(0, 3).map((e) => {
@@ -754,30 +828,50 @@ export default function FamilyCalendarLite() {
                   <p className={`${UI.text.body} ${UI.text.subtle}`}>
                     {view === 'pending' ? 'Nessuna richiesta in attesa' : 'Nessun evento'}
                   </p>
-                  {view === 'pending' && <p className={`${UI.text.helper} text-white/45 mt-2`}>Le richieste appariranno qui</p>}
+                  {view === 'pending' && (
+                    <p className={`${UI.text.helper} text-white/45 mt-2`}>Le richieste appariranno qui</p>
+                  )}
                 </div>
               ) : (
                 filteredEventsList.map((ev) => {
                   const who = WHO_OPTIONS.find((o) => o.id === ev.who);
                   const status = getStatus(ev);
+                  const isPending = status === 'pending';
 
                   return (
                     <div
                       key={ev.id}
                       onClick={() => openForm(ev)}
                       className={`${UI.card.base} ${UI.card.pad} flex ${UI.card.gap} active:scale-[0.99] transition-transform cursor-pointer ${
-                        view === 'pending' ? 'border-yellow-400/30' : 'border-white/10'
+                        isPending
+                          ? 'bg-yellow-500/10 border-yellow-400/40'
+                          : view === 'pending'
+                          ? 'border-yellow-400/30'
+                          : 'border-white/10'
                       }`}
                     >
                       <div className={`w-1 rounded-full self-stretch ${who?.color.split(' ')[0] || 'bg-white/20'}`} />
                       <div className="flex-1">
-                        <div className={`${UI.text.title} ${UI.text.strong}`}>{ev.title}</div>
+                        <div className={`${UI.text.title} ${UI.text.strong} flex items-center gap-2`}>
+                          {isPending && <span className="text-yellow-300">⏳</span>}
+                          {ev.title}
+                        </div>
                         <div className={`${UI.text.body} ${UI.text.subtle} mt-1`}>
                           {formatDateIT(new Date(ev.start_at))} •{' '}
-                          {ev.is_all_day ? 'Tutto il giorno' : `${formatTimeIT(ev.start_at)} - ${formatTimeIT(ev.end_at)}`}
+                          {ev.is_all_day
+                            ? 'Tutto il giorno'
+                            : `${formatTimeIT(ev.start_at)} - ${formatTimeIT(ev.end_at)}`}
                         </div>
+
+                        {/* ✅ hint for pending */}
+                        {approvalHint(ev) && (
+                          <div className="text-xs text-yellow-200 mt-1">{approvalHint(ev)}</div>
+                        )}
+
                         <div className="flex flex-wrap gap-3 mt-3">
-                          <span className={`${UI.chip.base} ${who?.color || 'bg-white/5 border-white/20 text-white/75'}`}>
+                          <span
+                            className={`${UI.chip.base} ${who?.color || 'bg-white/5 border-white/20 text-white/75'}`}
+                          >
                             {who?.label || ev.who}
                           </span>
                           <StatusBadge status={status} />
@@ -812,16 +906,21 @@ export default function FamilyCalendarLite() {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3">
-                {eventsForDate(selectedDate, 'drawer').length === 0 ? (
+                {drawerEvents.length === 0 ? (
                   <p className={`${UI.text.body} text-white/60 text-center py-6`}>Nessun evento</p>
                 ) : (
-                  eventsForDate(selectedDate, 'drawer').map((e) => {
+                  drawerEvents.map((e) => {
                     const who = WHO_OPTIONS.find((o) => o.id === e.who);
+                    const status = getStatus(e);
+                    const isPending = status === 'pending';
+
                     return (
                       <div
                         key={e.id}
                         onClick={() => openForm(e)}
-                        className="p-4 rounded-2xl bg-white/10 border-l-4 text-left cursor-pointer hover:bg-white/15 transition"
+                        className={`p-4 rounded-2xl border-l-4 text-left cursor-pointer hover:bg-white/15 transition ${
+                          isPending ? 'bg-yellow-500/10' : 'bg-white/10'
+                        }`}
                         style={{
                           borderLeftColor: who?.color.includes('blue')
                             ? '#3b82f6'
@@ -830,10 +929,21 @@ export default function FamilyCalendarLite() {
                             : '#a855f7',
                         }}
                       >
-                        <div className={`${UI.text.title} text-white`}>{e.title}</div>
+                        <div className="flex items-start justify-between gap-3">
+                        <div className={`${UI.text.title} text-white flex items-center gap-2`}>
+                          {isPending && <span className="text-yellow-300">⏳</span>}
+                          {e.title}
+                        </div>
+                        <StatusBadge status={status} />
+                      </div>
                         <div className={`${UI.text.body} text-white/70 mt-2`}>
                           {e.is_all_day ? 'Tutto il giorno' : `${formatTimeIT(e.start_at)} - ${formatTimeIT(e.end_at)}`}
                         </div>
+
+                        {/* ✅ hint for pending */}
+                        {approvalHint(e) && (
+                          <div className="text-xs text-yellow-200 mt-1">{approvalHint(e)}</div>
+                        )}
                       </div>
                     );
                   })
@@ -856,3 +966,5 @@ export default function FamilyCalendarLite() {
     </div>
   );
 }
+
+
