@@ -180,14 +180,22 @@ export default function FamilyCalendarLite() {
   // ✅ ВАЖНО: эти константы должны быть ВЫШЕ formData, потому что используются в initial state.
   type ParentId = 'parentA' | 'parentB';
 
-  // ✅ ВРЕМЕННЫЙ дефолт: кто сейчас работает в Mini App.
-  // Потом заменим на Telegram user id или твою систему PIN/ролей.
-  const CURRENT_PARENT: ParentId = 'parentA';
+  // ✅ ВСТАВЛЕНО: debug-переключатель “кто я сейчас” + localStorage
+  const [currentParent, setCurrentParent] = useState<ParentId>(() => {
+    const saved = localStorage.getItem('current_parent');
+    return saved === 'parentA' || saved === 'parentB' ? saved : 'parentA';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('current_parent', currentParent);
+  }, [currentParent]);
 
   const OTHER_PARENT: Record<ParentId, ParentId> = {
     parentA: 'parentB',
     parentB: 'parentA',
   };
+
+  const CURRENT_PARENT = currentParent;
 
   const [formData, setFormData] = useState<{
     title: string;
@@ -298,6 +306,29 @@ export default function FamilyCalendarLite() {
         return new Date(a.start_at).getTime() - new Date(b.start_at).getTime();
       });
   }, [events, selectedDate]);
+
+  // ✅ Step 6: Confirm/Decline per eventi pending (update in Supabase + UI)
+  const updateEventStatus = async (id: string, nextStatus: EventStatus) => {
+    const prev = events.find((e) => e.id === id);
+    if (!prev) return;
+
+    const patch: Partial<CalendarEvent> = {
+      status: nextStatus,
+      needs_approval_from: null,
+    };
+
+    const { error } = await supabase.from('events').update(patch).eq('id', id);
+
+    if (error) {
+      console.error('Supabase status update error:', error);
+      alert('Non è stato possibile aggiornare lo stato');
+      return;
+    }
+
+    setEvents((prevEvents) =>
+      prevEvents.map((e) => (e.id === id ? ({ ...e, ...patch } as CalendarEvent) : e))
+    );
+  };
 
   const handleSaveEvent = async () => {
     if (!formData.title.trim()) return alert('Inserisci un titolo');
@@ -796,6 +827,38 @@ export default function FamilyCalendarLite() {
         {/* AGENDA */}
         {(view === 'agenda' || view === 'pending') && (
           <div className="flex-1 flex flex-col overflow-hidden">
+           {view === 'pending' && (
+  <div className="px-4 pt-4">
+    {/* ✅ Переключатель "кто я сейчас" — показываем только в In attesa */}
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-xs text-white/60">Io sono:</span>
+
+      <button
+        onClick={() => setCurrentParent('parentA')}
+        className={`px-3 py-1 rounded-full text-xs border transition ${
+          currentParent === 'parentA'
+            ? 'bg-green-500/20 text-green-200 border-green-400/30'
+            : 'bg-white/5 text-white/70 border-white/10'
+        }`}
+      >
+        Pietro
+      </button>
+
+      <button
+        onClick={() => setCurrentParent('parentB')}
+        className={`px-3 py-1 rounded-full text-xs border transition ${
+          currentParent === 'parentB'
+            ? 'bg-purple-500/20 text-purple-200 border-purple-400/30'
+            : 'bg-white/5 text-white/70 border-white/10'
+        }`}
+      >
+        Elena
+      </button>
+    </div>
+  </div>
+)}
+
+
             <div className="px-4 py-3 flex gap-3 overflow-x-auto">
               <button
                 onClick={() => setFilterWho('all')}
@@ -837,6 +900,8 @@ export default function FamilyCalendarLite() {
                   const who = WHO_OPTIONS.find((o) => o.id === ev.who);
                   const status = getStatus(ev);
                   const isPending = status === 'pending';
+                  const canApprove =
+                    status === 'pending' && (ev.needs_approval_from as ParentId | null) === CURRENT_PARENT;
 
                   return (
                     <div
@@ -852,9 +917,36 @@ export default function FamilyCalendarLite() {
                     >
                       <div className={`w-1 rounded-full self-stretch ${who?.color.split(' ')[0] || 'bg-white/20'}`} />
                       <div className="flex-1">
-                        <div className={`${UI.text.title} ${UI.text.strong} flex items-center gap-2`}>
-                          {isPending && <span className="text-yellow-300">⏳</span>}
-                          {ev.title}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className={`${UI.text.title} ${UI.text.strong} flex items-center gap-2`}>
+                            {isPending && <span className="text-yellow-300">⏳</span>}
+                            {ev.title}
+                          </div>
+
+                          {canApprove && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateEventStatus(ev.id, 'confirmed');
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+                              >
+                                ✅ Conferma
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!confirm('Rifiutare questa richiesta?')) return;
+                                  updateEventStatus(ev.id, 'declined');
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-200 border border-rose-400/30"
+                              >
+                                ❌ Rifiuta
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div className={`${UI.text.body} ${UI.text.subtle} mt-1`}>
                           {formatDateIT(new Date(ev.start_at))} •{' '}
@@ -913,6 +1005,8 @@ export default function FamilyCalendarLite() {
                     const who = WHO_OPTIONS.find((o) => o.id === e.who);
                     const status = getStatus(e);
                     const isPending = status === 'pending';
+                    const canApprove =
+                      status === 'pending' && (e.needs_approval_from as ParentId | null) === CURRENT_PARENT;
 
                     return (
                       <div
@@ -930,12 +1024,41 @@ export default function FamilyCalendarLite() {
                         }}
                       >
                         <div className="flex items-start justify-between gap-3">
-                        <div className={`${UI.text.title} text-white flex items-center gap-2`}>
-                          {isPending && <span className="text-yellow-300">⏳</span>}
-                          {e.title}
+                          <div className={`${UI.text.title} text-white flex items-center gap-2`}>
+                            {isPending && <span className="text-yellow-300">⏳</span>}
+                            {e.title}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={status} />
+
+                            {canApprove && (
+                              <>
+                                <button
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    updateEventStatus(e.id, 'confirmed');
+                                  }}
+                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+                                  title="Conferma"
+                                >
+                                  ✅
+                                </button>
+
+                                <button
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    updateEventStatus(e.id, 'declined');
+                                  }}
+                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-200 border border-rose-400/30"
+                                  title="Rifiuta"
+                                >
+                                  ❌
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <StatusBadge status={status} />
-                      </div>
                         <div className={`${UI.text.body} text-white/70 mt-2`}>
                           {e.is_all_day ? 'Tutto il giorno' : `${formatTimeIT(e.start_at)} - ${formatTimeIT(e.end_at)}`}
                         </div>
@@ -966,5 +1089,3 @@ export default function FamilyCalendarLite() {
     </div>
   );
 }
-
-
